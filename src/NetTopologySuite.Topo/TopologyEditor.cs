@@ -194,7 +194,7 @@ public record TopologyEditor(ILogger<TopologyEditor> Logger, TopoFactory TopoFac
     /// NOTE: Similar to ST_AddIsoEdge
     /// SQL/MM specification. SQL-MM: Topo-Geo and Topo-Net 3: Routine Details: X.3.4
     /// </summary>
-    public Topology AddIsoEdge(Topology topology, Node startNode, Node endNode, LineString lineString)
+    public Topology AddIsoEdge(Topology topology, Node startNode, Node endNode, LineString lineString, int? eid = null)
     {
         Logger.LogTrace("AddIsoEdge for {startNode} to {endNode}", startNode, endNode);
         if (endNode == startNode)
@@ -213,7 +213,7 @@ public record TopologyEditor(ILogger<TopologyEditor> Logger, TopoFactory TopoFac
         CheckEdgeCrossing(topology, startNode, endNode, lineString);
         // TODO: check for face containment
         var containedFace = fromContainedFace;
-        var edge = TopoFactory.CreateEdge(startNode, endNode, lineString);
+        var edge = TopoFactory.CreateEdge(startNode, endNode, lineString, eid);
         var edges = topology.Edges.Add(edge);
         var edgeRels = topology.EdgeRels.Add(edge.Id, new EdgeRel(edge, edge, false, edge, true, containedFace, containedFace));
         var nodeRels = topology.NodeRels.SetItem(startNode.Id, topology.NodeRels[startNode.Id] with { ContainedFace = null });
@@ -355,7 +355,7 @@ public record TopologyEditor(ILogger<TopologyEditor> Logger, TopoFactory TopoFac
     /// NOTE: Similar to ST_AddEdgeNewFaces
     /// SQL/MM specification. SQL-MM: Topo-Geo and Topo-Net 3: Routine Details: X.3.12
     /// </summary>
-    public Topology AddEdgeNewFaces(Topology topology, Node startNode, Node endNode, LineString lineString)
+    public Topology AddEdgeNewFaces(Topology topology, Node startNode, Node endNode, LineString lineString, int? eid = null)
     {
         Logger.LogTrace("AddEdgeNewFaces from node {startNode} to {endNode}", startNode, endNode);
 
@@ -371,7 +371,7 @@ public record TopologyEditor(ILogger<TopologyEditor> Logger, TopoFactory TopoFac
         Face? leftFace = null;
         Face? rightFace = null;
 
-        var edge = TopoFactory.CreateEdge(startNode, endNode, lineString);
+        var edge = TopoFactory.CreateEdge(startNode, endNode, lineString, eid);
 
         /* Compute azimuth of first edge end on start node */
         double saz = Algorithms.Azimuth(edge.LineString.Coordinates[0], edge.LineString.Coordinates[1]);
