@@ -29,7 +29,7 @@ public class TopoFactory(ILogger<TopoFactory> Logger)
         return node;
     }
 
-    public Edge CreateEdge(Node startNode, Node endNode, LineString lineString)
+    public Edge CreateEdge(Node startNode, Node endNode, LineString lineString, int? eid = null)
     {
         if (startNode.Point != lineString.StartPoint)
             throw new TopologyException($"LineString startpoint not at node startpoint {startNode.Point}");
@@ -38,7 +38,7 @@ public class TopoFactory(ILogger<TopoFactory> Logger)
         var isSimpleOp = new IsSimpleOp(lineString);
         if (!isSimpleOp.IsSimple())
             throw new TopologyException("Non simple at location " + isSimpleOp.NonSimpleLocation);
-        var edge = new Edge(edgeId++, null, startNode, endNode, lineString);
+        var edge = new Edge(edgeId++, eid, startNode, endNode, lineString);
         //Logger.LogTrace("Creating edge {edge}", edge);
         return edge;
     }

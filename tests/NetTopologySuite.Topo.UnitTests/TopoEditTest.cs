@@ -692,4 +692,12 @@ public class TopoEditTest : BaseTest
         Assert.AreEqual("2 -1", topology.NodeRels[2].ToString());
         Assert.AreEqual("3 -1", topology.NodeRels[3].ToString());
     }
+
+        [TestMethod]
+    public void TestAddEdgeWithEid()
+    {
+        Topology = TopologyEditor.AddIsoNode(Topology, Face.Universe, Read<Point>("POINT(5 5)"));
+        Topology = TopologyEditor.AddEdgeNewFaces(Topology, Topology.Nodes[0], Topology.Nodes[0], Read<LineString>("LINESTRING(5 5, 0 0, 10 0, 5 5)"), 999);
+        Assert.AreEqual(999, Topology.Edges[0].Eid);
+    }
 }
