@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using System.Collections.Immutable;
 using Microsoft.Extensions.Logging;
 using NetTopologySuite.Algorithm;
@@ -545,6 +544,8 @@ public record TopologyEditor(ILogger<TopologyEditor> Logger, TopoFactory TopoFac
         if (topology.Faces.Length == facesCount && !leftIsUniverse)
             return topology;
 
+        edgeRel = topology.EdgeRels[edge.Id];
+
         // attempt face split by traversing edge forward
         topology = AddFaceSplit(topology, edge, edgeRel.FaceLeft, true, out leftIsUniverse);
 
@@ -790,23 +791,38 @@ public record TopologyEditor(ILogger<TopologyEditor> Logger, TopoFactory TopoFac
             Logger.LogDebug("[TopologyEditor:AddFaceSplit] Edge {edgeId} is not a known edge of the new ring", e.Edge.Id);
             
             var ep = e.Edge.StartNode.Point;
-            var contains = bbox.Contains(ep.Coordinate);
-            contains = contains ? Algorithms.Contains(coordinates, ep.Coordinate) : contains;
+            var contains = bbox.Contains(ep.Coordinate) ? Algorithms.Location.Inside : Algorithms.Location.Outside;
+            contains = contains == Algorithms.Location.Inside ? Algorithms.Contains(coordinates, ep.Coordinate) : contains;
 
-            if (contains)
+            if (contains == Algorithms.Location.Inside)
             {
                 Logger.LogDebug("[TopologyEditor:AddFaceSplit] Edge {edgeId} first point inside new ring", e.Edge.Id);
             }
-            else
+            else if (contains == Algorithms.Location.OnBoundary)
+            {
+                Logger.LogDebug("[TopologyEditor:AddFaceSplit] Edge {edgeId} first point on boundary of new ring", e.Edge.Id);
+            }
+            else if (contains == Algorithms.Location.Outside)
             {
                 Logger.LogDebug("[TopologyEditor:AddFaceSplit] Edge {edgeId} first point outside new ring", e.Edge.Id);
             }
-
+            
             /* (2.2) skip edges (NOT, if newface_outside) contained in ring */
-            if (newfaceOutside == contains) 
+            if (newfaceOutside)
             {
-                Logger.LogDebug("[TopologyEditor:AddFaceSplit] Edge {edgeId} not outside of the new ring, not updating it", e.Edge.Id);
-                continue;
+                if (contains != Algorithms.Location.Outside)
+                {
+                    Logger.LogDebug("[TopologyEditor:AddFaceSplit] Edge {edgeId} not outside of the new ring, not updating it", e.Edge.Id);
+                    continue;
+                }
+            }
+            else
+            {
+                if (contains != Algorithms.Location.Inside)
+                {
+                    Logger.LogDebug("[TopologyEditor:AddFaceSplit] Edge {edgeId} not inside the new ring, not updating it", e.Edge.Id);
+                    continue;
+                }
             }
 
             /* (2.3) push to forward_edges if left_face = oface */
@@ -846,7 +862,22 @@ public record TopologyEditor(ILogger<TopologyEditor> Logger, TopoFactory TopoFac
         foreach (var node in nodes)
         {
             var contains = Algorithms.Contains(coordinates, node.Point.Coordinate);
-            if (newfaceOutside == contains) continue;
+            if (newfaceOutside)
+            {
+                if (contains == Algorithms.Location.Inside)
+                {
+                    Logger.LogDebug("[TopologyEditor:AddFaceSplit] Node {Id} contained in an hole of the new face", node.Id);
+                    continue;
+                }
+            }
+            else
+            {
+                if (contains != Algorithms.Location.Inside)
+                {
+                    Logger.LogDebug("[TopologyEditor:AddFaceSplit] Node {Id} not contained in the face shell", node.Id);
+                    continue;
+                }
+            }
             nodeRels = nodeRels.SetItem(node.Id, nodeRels[node.Id] with { ContainedFace = newface });
         }
 
