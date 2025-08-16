@@ -42,7 +42,14 @@ public static class Algorithms
         return wn;
     }
 
-    public static bool Contains(Coordinate[] cs, Coordinate c)
+    public enum Location
+    {
+        Inside = 0,
+        OnBoundary = 1,
+        Outside = 2
+    }
+
+    public static Location Contains(Coordinate[] cs, Coordinate c)
     {
         int wn = 0;
         for (var i = 0; i < cs.Length - 1; i++)
@@ -50,7 +57,7 @@ public static class Algorithms
             var c1 = cs[i];
             var c2 = cs[i + 1];
             if (IsOnSegment(c, c1, c2))
-                return false;
+                return Location.OnBoundary;
             if (c1.Y <= c.Y)
             {
                 if (c2.Y > c.Y && IsLeft(c1, c2, c) > 0.0)
@@ -59,9 +66,8 @@ public static class Algorithms
             else if (c2.Y <= c.Y && IsLeft(c1, c2, c) < 0.0)
                 wn--;
         }
-        return wn != 0;
+        return wn != 0 ? Location.Inside : Location.Outside;
     }
-
 
     public static bool IsOnSegment(Coordinate[] cs, Coordinate c)
     {
