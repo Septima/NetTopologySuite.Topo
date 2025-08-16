@@ -755,7 +755,9 @@ public record TopologyEditor(ILogger<TopologyEditor> Logger, TopoFactory TopoFac
         /* (1) fetch all edges where left_face or right_face is = oldface */
         var edges = edgeRels.Values
             .Where(er =>
-                   er.FaceLeft == face || er.FaceRight == face).ToList();
+                   er.FaceLeft == face || er.FaceRight == face &&
+                   (er.FaceLeft == Face.Universe || bbox.Intersects(er.FaceLeft.Bbox) ||
+                    er.FaceRight == Face.Universe || bbox.Intersects(er.FaceRight.Bbox))).ToList();
         Logger.LogDebug("[TopologyEditor:AddFaceSplit] _lwt_AddFaceSplit: lwt_be_getEdgeByFace({faceId}) returned {edgeCount} edges", face.Id, edges.Count);
                    
         List<int> forwardEdges = [];
