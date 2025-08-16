@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Collections.Immutable;
 using Microsoft.Extensions.Logging;
 using NetTopologySuite.Algorithm;
@@ -31,6 +32,9 @@ public record TopologyEditor(ILogger<TopologyEditor> Logger, TopoFactory TopoFac
         }
 
         var edges = GetEdgesForNode(topology, node);
+        Logger.LogDebug("[TopologyEditor:FindAdjacentEdges] getEdgeByNode returned {edgeCount} edges, minaz={minaz}, maxaz={maxaz}", 
+            edges.Length, minaz, maxaz);
+        
         if (edges.Length == 0)
             edgeEnd = edgeEnd with { Isolated = true };
 
@@ -46,10 +50,18 @@ public record TopologyEditor(ILogger<TopologyEditor> Logger, TopoFactory TopoFac
                 var otherEdgeAz = Algorithms.Azimuth(p1, p2);
                 azdiff = otherEdgeAz - az;
                 if (azdiff < 0) azdiff += 2 * Math.PI;
+                
+                Logger.LogDebug("[TopologyEditor:FindAdjacentEdges] edge {edgeId} starts on node {nodeId}, edgeend is [{p1} {p2}]", 
+                    other.Id, node.Id, p1, p2);
+                Logger.LogDebug("[TopologyEditor:FindAdjacentEdges] azimuth of edge {edgeId}: {azimuth} (diff: {azdiff})", 
+                    other.Id, otherEdgeAz, azdiff);
+                
                 if (minaz == -1)
                 {
                     edgeEnd = edgeEnd with { NextCW = other, IsNextCWForward = true, NextCCW = other, IsNextCCWForward = true, FaceCW = otherEdgeRel.FaceLeft, FaceCCW = otherEdgeRel.FaceRight };
                     minaz = maxaz = azdiff;
+                    Logger.LogDebug("[TopologyEditor:FindAdjacentEdges] new nextCW and nextCCW edge is {edgeId}, outgoing, with face_left {faceLeft} and face_right {faceRight} (face_right is new ccwFace, face_left is new cwFace)", 
+                        other.Id, otherEdgeRel.FaceLeft?.Id, otherEdgeRel.FaceRight?.Id);
                 }
                 else
                 {
@@ -57,11 +69,15 @@ public record TopologyEditor(ILogger<TopologyEditor> Logger, TopoFactory TopoFac
                     {
                         edgeEnd = edgeEnd with { NextCW = other, IsNextCWForward = true, FaceCW = otherEdgeRel.FaceLeft };
                         minaz = azdiff;
+                        Logger.LogDebug("[TopologyEditor:FindAdjacentEdges] new nextCW edge is {edgeId}, outgoing, with face_left {faceLeft} and face_right {faceRight} (previous had minaz={prevMinaz}, face_left is new cwFace)", 
+                            other.Id, otherEdgeRel.FaceLeft?.Id, otherEdgeRel.FaceRight?.Id, minaz);
                     }
                     else if (azdiff > maxaz)
                     {
                         edgeEnd = edgeEnd with { NextCCW = other, IsNextCCWForward = true, FaceCCW = otherEdgeRel.FaceRight };
                         maxaz = azdiff;
+                        Logger.LogDebug("[TopologyEditor:FindAdjacentEdges] new nextCCW edge is {edgeId}, outgoing, from start point, with face_left {faceLeft} and face_right {faceRight} (previous had maxaz={prevMaxaz}, face_left is new ccwFace)", 
+                            other.Id, otherEdgeRel.FaceLeft?.Id, otherEdgeRel.FaceRight?.Id, maxaz);
                     }
                 }
             }
@@ -72,10 +88,18 @@ public record TopologyEditor(ILogger<TopologyEditor> Logger, TopoFactory TopoFac
                 var otherEdgeAz = Algorithms.Azimuth(p1, p2);
                 azdiff = otherEdgeAz - az;
                 if (azdiff < 0) azdiff += 2 * Math.PI;
+                
+                Logger.LogDebug("[TopologyEditor:FindAdjacentEdges] edge {edgeId} ends on node {nodeId}, edgeend is [{p1} {p2}]", 
+                    other.Id, node.Id, p1, p2);
+                Logger.LogDebug("[TopologyEditor:FindAdjacentEdges] azimuth of edge {edgeId}: {azimuth} (diff: {azdiff})", 
+                    other.Id, otherEdgeAz, azdiff);
+                
                 if (minaz == -1)
                 {
                     edgeEnd = edgeEnd with { NextCW = other, IsNextCWForward = false, NextCCW = other, IsNextCCWForward = false, FaceCW = otherEdgeRel.FaceRight, FaceCCW = otherEdgeRel.FaceLeft };
                     minaz = maxaz = azdiff;
+                    Logger.LogDebug("[TopologyEditor:FindAdjacentEdges] new nextCW and nextCCW edge is {edgeId}, incoming, with face_left {faceLeft} and face_right {faceRight} (face_right is new cwFace, face_left is new ccwFace)", 
+                        other.Id, otherEdgeRel.FaceLeft?.Id, otherEdgeRel.FaceRight?.Id);
                 }
                 else
                 {
@@ -83,15 +107,28 @@ public record TopologyEditor(ILogger<TopologyEditor> Logger, TopoFactory TopoFac
                     {
                         edgeEnd = edgeEnd with { NextCW = other, IsNextCWForward = false, FaceCW = otherEdgeRel.FaceRight };
                         minaz = azdiff;
+                        Logger.LogDebug("[TopologyEditor:FindAdjacentEdges] new nextCW edge is {edgeId}, incoming, with face_left {faceLeft} and face_right {faceRight} (previous had minaz={prevMinaz}, face_right is new cwFace)", 
+                            other.Id, otherEdgeRel.FaceLeft?.Id, otherEdgeRel.FaceRight?.Id, minaz);
                     }
                     else if (azdiff > maxaz)
                     {
                         edgeEnd = edgeEnd with { NextCCW = other, IsNextCCWForward = false, FaceCCW = otherEdgeRel.FaceLeft };
                         maxaz = azdiff;
+                        Logger.LogDebug("[TopologyEditor:FindAdjacentEdges] new nextCCW edge is {edgeId}, incoming, with face_left {faceLeft} and face_right {faceRight} (previous had maxaz={prevMaxaz}, face_left is new ccwFace)", 
+                            other.Id, otherEdgeRel.FaceLeft?.Id, otherEdgeRel.FaceRight?.Id, maxaz);
                     }
                 }
             }
         }
+        
+        if (!edgeEnd.Isolated)
+        {
+            Logger.LogDebug("[TopologyEditor:FindAdjacentEdges] edges adjacent to azimuth {azimuth} (incident to node {nodeId}): CW:{cwEdge}({cwAz}) CCW:{ccwEdgeSign}{ccwEdge}({ccwAz})", 
+                az, node.Id, 
+                edgeEnd.NextCW.Id, minaz,
+                edgeEnd.IsNextCCWForward ? "" : "-", edgeEnd.NextCCW.Id, maxaz);
+        }
+        
         return edgeEnd;
     }
 
@@ -357,7 +394,9 @@ public record TopologyEditor(ILogger<TopologyEditor> Logger, TopoFactory TopoFac
     /// </summary>
     public Topology AddEdgeNewFaces(Topology topology, Node startNode, Node endNode, LineString lineString, int? eid = null)
     {
-        Logger.LogTrace("AddEdgeNewFaces from node {startNode} to {endNode}", startNode, endNode);
+        Logger.LogDebug("[TopologyEditor:AddEdgeNewFaces] Calling AddEdgeNewFaces");
+        Logger.LogDebug("[TopologyEditor:AddEdgeNewFaces] edge's start node is {startNode}", startNode);
+        Logger.LogDebug("[TopologyEditor:AddEdgeNewFaces] edge's end node is {endNode}", endNode);
 
         if (!startNode.Point.Coordinate.Equals2D(lineString.Coordinates.First()))
             throw new TopologyException($"Node {startNode} is not at the same location as lineString start");
@@ -378,6 +417,8 @@ public record TopologyEditor(ILogger<TopologyEditor> Logger, TopoFactory TopoFac
         /* Compute azimuth of last edge end on end node */
         double eaz = Algorithms.Azimuth(edge.LineString.Coordinates[^1], edge.LineString.Coordinates[^2]);
 
+        Logger.LogDebug("[TopologyEditor:AddEdgeNewFaces] edge azimuth on start node: {saz}, end node: {eaz}", saz, eaz);
+
         // Check endpoints existence, match with Curve geometry and get face information (if any)
         if (topology.NodeRels[startNode.Id].ContainedFace != null)
             leftFace = rightFace = topology.NodeRels[startNode.Id].ContainedFace;
@@ -385,6 +426,7 @@ public record TopologyEditor(ILogger<TopologyEditor> Logger, TopoFactory TopoFac
             throw new TopologyException($"Spatial exception - geometry crosses an edge (endnodes in faces {topology.NodeRels[startNode.Id].ContainedFace} and {topology.NodeRels[endNode.Id].ContainedFace})");
 
         /* Find adjacent edges to each endpoint */
+        Logger.LogDebug("[TopologyEditor:AddEdgeNewFaces] Looking for edges incident to node {startNode} and adjacent to azimuth {saz}", startNode, saz);
         var span = FindAdjacentEdges(topology, edge, startNode, saz, isClosed ? eaz : null);
         Edge nextRightEdge;
         bool isNextRightEdgeForward;
@@ -398,6 +440,8 @@ public record TopologyEditor(ILogger<TopologyEditor> Logger, TopoFactory TopoFac
             isPrevLeftEdgeForward = span.NextCCW != edge ? !span.IsNextCCWForward : true;
             rightFace ??= span.FaceCW;
             leftFace ??= span.FaceCCW;
+            Logger.LogDebug("[TopologyEditor:AddEdgeNewFaces] New edge {edge} is connected on start node, next_right is {nextRightEdge}, prev_left is {prevLeftEdge}", 
+                edge, nextRightEdge, prevLeftEdge);
         }
         else
         {
@@ -407,6 +451,7 @@ public record TopologyEditor(ILogger<TopologyEditor> Logger, TopoFactory TopoFac
             isPrevLeftEdgeForward = isClosed;
         }
 
+        Logger.LogDebug("[TopologyEditor:AddEdgeNewFaces] Looking for edges incident to node {endNode} and adjacent to azimuth {eaz}", endNode, eaz);
         var epan = FindAdjacentEdges(topology, edge, endNode, eaz, isClosed ? saz : null);
         Edge nextLeftEdge;
         bool isNextLeftEdgeFoward;
@@ -426,6 +471,8 @@ public record TopologyEditor(ILogger<TopologyEditor> Logger, TopoFactory TopoFac
                 leftFace = span.FaceCW;
             else if (leftFace != epan.FaceCW)
                 throw new TopologyException($"Side-location conflict: new edge starts in face {leftFace} and ends in face {epan.FaceCW}");
+            Logger.LogDebug("[TopologyEditor:AddEdgeNewFaces] New edge {edge} is connected on end node, next_left is {nextLeftEdge}, prev_right is {prevRightEdge}", 
+                edge, nextLeftEdge, prevRightEdge);
         }
         else
         {
@@ -443,14 +490,22 @@ public record TopologyEditor(ILogger<TopologyEditor> Logger, TopoFactory TopoFac
         var edgeRel = new EdgeRel(edge, nextLeftEdge, isNextLeftEdgeFoward, nextRightEdge, isNextRightEdgeForward, leftFace, rightFace);
         edgeRels = SetEdgeRel(edgeRels, edge.Id, edgeRel);
 
+        Logger.LogDebug("[TopologyEditor:AddEdgeNewFaces] Inserted new edge {edgeId}", edge.Id);
+
         // link prevLeftEdge to us
         if (prevLeftEdge != edge)
         {
             var prevLeftEdgeRel = edgeRels[prevLeftEdge.Id];
             if (isPrevLeftEdgeForward)
+            {
                 edgeRels = SetEdgeRel(edgeRels, prevLeftEdge.Id, prevLeftEdgeRel with { NextLeft = edge, IsNextLeftForward = true });
+                Logger.LogDebug("[TopologyEditor:AddEdgeNewFaces] Updated edge {edgeId} next_left_edge = {nextLeftEdge}", prevLeftEdge.Id, edge.Id);
+            }
             else
+            {
                 edgeRels = SetEdgeRel(edgeRels, prevLeftEdge.Id, prevLeftEdgeRel with { NextRight = edge, IsNextRightForward = true });
+                Logger.LogDebug("[TopologyEditor:AddEdgeNewFaces] Updated edge {edgeId} next_right_edge = {nextRightEdge}", prevLeftEdge.Id, edge.Id);
+            }
         }
 
         // link prevRightEdge to us
@@ -458,9 +513,15 @@ public record TopologyEditor(ILogger<TopologyEditor> Logger, TopoFactory TopoFac
         {
             var prevRightEdgeRel = edgeRels[prevRightEdge.Id];
             if (isPrevRightEdgeForward)
+            {
                 edgeRels = SetEdgeRel(edgeRels, prevRightEdge.Id, prevRightEdgeRel with { NextLeft = edge, IsNextLeftForward = false });
+                Logger.LogDebug("[TopologyEditor:AddEdgeNewFaces] Updated edge {edgeId} next_left_edge = -{nextLeftEdge}", prevRightEdge.Id, edge.Id);
+            }
             else
+            {
                 edgeRels = SetEdgeRel(edgeRels, prevRightEdge.Id, prevRightEdgeRel with { NextRight = edge, IsNextRightForward = false });
+                Logger.LogDebug("[TopologyEditor:AddEdgeNewFaces] Updated edge {edgeId} next_right_edge = -{nextRightEdge}", prevRightEdge.Id, edge.Id);
+            }
         }
 
         // set containing_face = null for start_node and end_node if they where isolated
@@ -493,6 +554,8 @@ public record TopologyEditor(ILogger<TopologyEditor> Logger, TopoFactory TopoFac
         faces = topology.Faces;
         if (edgeRel.FaceLeft != Face.Universe)
             faces = topology.Faces.Remove(edgeRel.FaceLeft);
+
+        Logger.LogDebug("[TopologyEditor:AddEdgeNewFaces] lwt_AddEdgeNewFaces returned");
 
         return topology with { Faces = faces };
     }
@@ -622,7 +685,7 @@ public record TopologyEditor(ILogger<TopologyEditor> Logger, TopoFactory TopoFac
     // port of _lwt_AddFaceSplit
     private Topology AddFaceSplit(Topology topology, Edge edge, Face face, bool forward, out bool leftIsUniverse)
     {
-        Logger.LogTrace("AddFaceSplit for edge {edge} on face {face} direction forward {forward}", edge, face, forward);
+        Logger.LogDebug("[TopologyEditor:AddFaceSplit] AddFaceSplit for edge {edge} on face {face} direction forward {forward}", edge, face, forward);
 
         var faces = topology.Faces;
         var nodeRels = topology.NodeRels;
@@ -632,6 +695,8 @@ public record TopologyEditor(ILogger<TopologyEditor> Logger, TopoFactory TopoFac
         topology = topology with { NodeRels = nodeRels, EdgeRels = edgeRels, Faces = faces };
 
         var ringEdges = GetRingEdges(topology, edge, forward);
+        Logger.LogDebug("[TopologyEditor:AddFaceSplit] getRingEdges returned {edgeCount} edges", ringEdges.Length);
+        Logger.LogDebug("[TopologyEditor:AddFaceSplit] Edge {edgeDirection}{edgeId} split face {faceId} (mbr_only:0)", forward ? "" : "-", edge.Id, face.Id);
 
         // You can't get to the other side of an edge forming a ring
         foreach (var ring in ringEdges)
@@ -645,11 +710,14 @@ public record TopologyEditor(ILogger<TopologyEditor> Logger, TopoFactory TopoFac
 
         var isCCW = Algorithms.IsCCW(coordinates);
 
+        Logger.LogDebug("[TopologyEditor:AddFaceSplit] Ring of edge {edgeDirection}{edgeId} is {orientation}", 
+            forward ? "" : "-", edge.Id, isCCW ? "counterclockwise" : "clockwise");
+
         if (face == Face.Universe)
         {
             if (!isCCW)
             {
-                Logger.LogTrace("The left face of this clockwise ring is the universe, won't create a new face there");
+                Logger.LogDebug("[TopologyEditor:AddFaceSplit] The left face of this clockwise ring is the universe, won't create a new face there");
                 leftIsUniverse = true;
                 return topology;
             }
@@ -665,17 +733,32 @@ public record TopologyEditor(ILogger<TopologyEditor> Logger, TopoFactory TopoFac
         /* Insert the new face */
         var newface = TopoFactory.CreateFace(mbr);
         faces = faces.Add(newface);
+        Logger.LogDebug("[TopologyEditor:AddFaceSplit] Inserted new face {faceId}", newface.Id);
 
         /* Update side location of new face edges */
 
         /* We want the new face to be on the left, if possible */
+        /* true = face shrunk, must update all non-contained edges and nodes */
         var newfaceOutside = face != Face.Universe && !isCCW;
 
+        if (newfaceOutside)
+        {
+            Logger.LogDebug("[TopologyEditor:AddFaceSplit] New face is on the outside of the ring, updating rings in former shell");
+        }
+        else
+        {
+            Logger.LogDebug("[TopologyEditor:AddFaceSplit] New face is on the inside of the ring, updating forward edges in new ring");
+        }
+
+        /* Update edges bounding the old face */
+        /* (1) fetch all edges where left_face or right_face is = oldface */
         var edges = edgeRels.Values
             .Where(er =>
-                   er.FaceLeft == face || er.FaceRight == face &&
-                   (er.FaceLeft == Face.Universe || bbox.Intersects(er.FaceLeft.Bbox) ||
-                    er.FaceRight == Face.Universe || bbox.Intersects(er.FaceRight.Bbox)));
+                   er.FaceLeft == face || er.FaceRight == face).ToList();
+        Logger.LogDebug("[TopologyEditor:AddFaceSplit] _lwt_AddFaceSplit: lwt_be_getEdgeByFace({faceId}) returned {edgeCount} edges", face.Id, edges.Count);
+                   
+        List<int> forwardEdges = [];
+        List<int> backwardEdges = [];
         /* (2) loop over the results and: */
         foreach (var e in edges)
         {
@@ -684,44 +767,75 @@ public record TopologyEditor(ILogger<TopologyEditor> Logger, TopoFactory TopoFac
             /* (2.1) skip edges whose ID is in the list of boundary edges */
             foreach (var ringEdge in ringEdges)
             {
-                if (ringEdge.Edge == edgeRel.Edge && ringEdge.Forward)
+                if (ringEdge.Edge.Id == edgeRel.Edge.Id && ringEdge.Forward)
                 {
-                    edgeRel = edgeRel with { FaceLeft = newface };
+                    forwardEdges.Add(e.Edge.Id);
                     found++;
-                    if (found == 2) break;
+                    Logger.LogDebug("[TopologyEditor:AddFaceSplit] Edge {edgeId} is a known forward edge of the new ring", e.Edge.Id);
+                    if (found == 2) break; /* both edge sides are found on the ring */
                 }
-                else if (ringEdge.Edge == edgeRel.Edge && !ringEdge.Forward)
+                else if (ringEdge.Edge.Id == edgeRel.Edge.Id && !ringEdge.Forward)
                 {
-                    edgeRel = edgeRel with { FaceRight = newface };
+                    backwardEdges.Add(e.Edge.Id);
                     found++;
-                    if (found == 2) break;
+                    Logger.LogDebug("[TopologyEditor:AddFaceSplit] Edge {edgeId} is a known backward edge of the new ring", e.Edge.Id);
+                    if (found == 2) break; /* both edge sides are found on the ring */
                 }
             }
-            if (found > 0)
+            if (found > 0) 
             {
-                edgeRels = SetEdgeRel(edgeRels, edgeRel.Edge.Id, edgeRel);
                 continue;
             }
 
+            Logger.LogDebug("[TopologyEditor:AddFaceSplit] Edge {edgeId} is not a known edge of the new ring", e.Edge.Id);
+            
             var ep = e.Edge.StartNode.Point;
-
-            /* (2.2) skip edges (NOT, if newface_outside) contained in ring */
             var contains = bbox.Contains(ep.Coordinate);
             contains = contains ? Algorithms.Contains(coordinates, ep.Coordinate) : contains;
-            if (newfaceOutside == contains) continue;
+
+            if (contains)
+            {
+                Logger.LogDebug("[TopologyEditor:AddFaceSplit] Edge {edgeId} first point inside new ring", e.Edge.Id);
+            }
+            else
+            {
+                Logger.LogDebug("[TopologyEditor:AddFaceSplit] Edge {edgeId} first point outside new ring", e.Edge.Id);
+            }
+
+            /* (2.2) skip edges (NOT, if newface_outside) contained in ring */
+            if (newfaceOutside == contains) 
+            {
+                Logger.LogDebug("[TopologyEditor:AddFaceSplit] Edge {edgeId} not outside of the new ring, not updating it", e.Edge.Id);
+                continue;
+            }
 
             /* (2.3) push to forward_edges if left_face = oface */
             if (e.FaceLeft == face)
             {
-                edgeRel = edgeRel with { FaceLeft = newface };
-                edgeRels = SetEdgeRel(edgeRels, e.Edge.Id, edgeRel);
+                forwardEdges.Add(e.Edge.Id);
+                Logger.LogDebug("[TopologyEditor:AddFaceSplit] Edge {edgeId} has new face on the left side", e.Edge.Id);
             }
             /* (2.4) push to backward_edges if right_face = oface */
             if (e.FaceRight == face)
             {
-                edgeRel = edgeRel with { FaceRight = newface };
-                edgeRels = SetEdgeRel(edgeRels, e.Edge.Id, edgeRel);
+                backwardEdges.Add(e.Edge.Id);
+                Logger.LogDebug("[TopologyEditor:AddFaceSplit] Edge {edgeId} has new face on the right side", e.Edge.Id);
             }
+        }
+
+        /* Update forward edges */
+        if (forwardEdges.Count > 0)
+        {
+            Logger.LogDebug("[TopologyEditor:AddFaceSplit] Updating {count} forward edges to new face {faceId}", forwardEdges.Count, newface.Id);
+            foreach (var edgeId in forwardEdges)
+                edgeRels = SetEdgeRel(edgeRels, edgeId, edgeRels[edgeId] with { FaceLeft = newface });
+        }
+        /* Update backward edges */
+        if (backwardEdges.Count > 0)
+        {
+            Logger.LogDebug("[TopologyEditor:AddFaceSplit] Updating {count} backward edges to new face {faceId}", backwardEdges.Count, newface.Id);
+            foreach (var edgeId in backwardEdges)
+                edgeRels = SetEdgeRel(edgeRels, edgeId, edgeRels[edgeId] with { FaceRight = newface });
         }
 
         /* Update isolated nodes which are now in new face */
@@ -738,12 +852,15 @@ public record TopologyEditor(ILogger<TopologyEditor> Logger, TopoFactory TopoFac
 
         topology = topology with { NodeRels = nodeRels, EdgeRels = edgeRels, Faces = faces };
 
+        Logger.LogDebug("[TopologyEditor:AddFaceSplit] cb_updateTopoGeomFaceSplit signalled split of face {oldFaceId} into {newFaceId} and {remainingFaceId}", 
+            face.Id, newface.Id, face.Id);
+
         return topology;
     }
 
     private ImmutableDictionary<int, EdgeRel> SetEdgeRel(ImmutableDictionary<int, EdgeRel> edgeRels, int id, EdgeRel edgeRel)
     {
-        //Logger.LogTrace("Setting edge rel: {edgeRel}", edgeRel);
+        Logger.LogDebug("[TopologyEditor:SetEdgeRel] Setting edge rel: {edgeRel}", edgeRel);
         return edgeRels.SetItem(id, edgeRel);
     }
 
@@ -768,10 +885,19 @@ public record TopologyEditor(ILogger<TopologyEditor> Logger, TopoFactory TopoFac
         {
             var currentEdgeRel = topology.EdgeRels[currentEdge.Id];
             ring.Add(new EdgeDirection(currentEdge, forward));
+            Logger.LogDebug("[TopologyEditor:GetRingEdges] Component {index} in ring of edge {edgeDirection}{edgeId} is edge {edgeDirection2}{edgeId2}", 
+                ring.Count - 1, initialDirection ? "" : "-", edge.Id, forward ? "" : "-", currentEdge.Id);
+            
             currentEdge = forward ? currentEdgeRel.NextLeft : currentEdgeRel.NextRight;
             forward = forward ? currentEdgeRel.IsNextLeftForward : currentEdgeRel.IsNextRightForward;
             if (currentEdge == edge && initialDirection == forward)
+            {
+                Logger.LogDebug("[TopologyEditor:GetRingEdges] Last component in ring of edge {edgeDirection}{edgeId} ({lastEdgeId}) has next_{direction}_edge {nextEdgeDirection}{nextEdgeId}", 
+                    initialDirection ? "" : "-", edge.Id, ring.Last().Edge.Id, 
+                    initialDirection ? "left" : "right", 
+                    initialDirection == forward ? "" : "-", edge.Id);
                 break;
+            }
             if (ring.Count > topology.EdgeRels.Count * 2)
                 throw new TopologyException("Suspect invalid topology (infinite traversal)");
         };
@@ -779,8 +905,14 @@ public record TopologyEditor(ILogger<TopologyEditor> Logger, TopoFactory TopoFac
     }
 
     // based on _lwt_MakeRingShell
-    private static Coordinate[] MakeRingShell(ImmutableArray<EdgeDirection> edges)
+    private Coordinate[] MakeRingShell(ImmutableArray<EdgeDirection> edges)
     {
+        for (int i = 0; i < edges.Length; i++)
+        {
+            var edge = edges[i];
+            Logger.LogDebug("[TopologyEditor:MakeRingShell] Edge {edgeId} in ring is edge {dir}{edgeId}", edge.Edge.Id, edge.Forward ? "" : "-", edge.Edge.Id);
+        }
+        
         var coordinates = edges
             .Distinct()
             .SelectMany(e => e.Forward ? e.Edge.LineString.Coordinates : e.Edge.LineString.Coordinates.Reverse());
